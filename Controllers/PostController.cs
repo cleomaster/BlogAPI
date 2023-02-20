@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using BlogAPI.Models;
 using BlogAPI.Models.Dto;
 using BlogAPI.Services;
@@ -20,7 +21,6 @@ public class PostController : ControllerBase
    }
    
    [HttpGet]
-   [Authorize]
    public async Task<ActionResult<List<Post>>> getPosts()
    {
       var posts = await _context.Posts.ToListAsync();
@@ -28,13 +28,16 @@ public class PostController : ControllerBase
    }
 
    [HttpPost]
+   [Authorize]
    public async Task<ActionResult<Post>> createPost([FromBody] PostDTO request)
    {
       var post = new Post(request.title, request.description);
-      // Post.Posts.Add(post);
-      await _context.Posts.AddAsync(post);
+      var user = await _context.Users.FindAsync(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)));
+      user.Posts.Add(post);
+     // post.user = user;
+     // await _context.Posts.AddAsync(post);
       await _context.SaveChangesAsync();
-      return Ok(post);
+      return Ok(user);
    }
 
    [HttpGet("Id")]
@@ -47,23 +50,30 @@ public class PostController : ControllerBase
    }
 
    [HttpPost("Id")]
+   [Authorize]
    public async Task<ActionResult<Post>> deletePost(int Id)
    {
      // var post = Post.Posts.FindAll(u => u.Id == Id).FirstOrDefault();
      var post = await _context.Posts.FindAsync(Id);
      if (post == null) return BadRequest();
-     _context.Posts.Remove(post);
+     var user = await _context.Users.FindAsync(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)));
+     if(post.user.Id != user.Id) return BadRequest();
+      // _context.Posts.Remove(post);
+       user.Posts.Remove(post);
      await _context.SaveChangesAsync();
       return Ok(post);
    }
 
    [HttpPost]
    [Route("/update")]
+   [Authorize]
    public async Task<ActionResult<Post>> updatePost(int Id, PostDTO request)
    {
       // var post = Post.Posts.FindAll(u => u.Id == Id).FirstOrDefault();
       var post = await _context.Posts.FindAsync(Id);
       if (post == null) return BadRequest();
+      var user = await _context.Users.FindAsync(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)));
+      if(post.user.Id != user.Id) return BadRequest();
       post.description = request.description;
       post.title = request.title;
       _context.Posts.Update(post);

@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using BlogAPI.Models;
 using BlogAPI.Models.Dto;
+using BlogAPI.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 
@@ -13,38 +15,56 @@ namespace BlogAPI.Controllers;
 [Route("/api/auth")]
 public class AuthController : ControllerBase
 {
-    public static User user = new User();
+   // private User user = new User();
     private readonly IConfiguration _configuration;
+    private AppDBContext _context;
 
-    public AuthController(IConfiguration configuration)
+    public AuthController(IConfiguration configuration, AppDBContext context)
     {
         _configuration = configuration;
+        _context = context;
+    }
+
+    [HttpGet]
+    [Authorize]
+    [Route("/me")]
+    public async Task<ActionResult<User>> me()
+    {
+        var user = await _context.Users.FindAsync(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)));
+        return Ok(user);
     }
 
     [HttpPost]
     [Route("/register")]
-    public ActionResult<User> register(UserDTO request)
+    public async Task<ActionResult<User>> register(UserDTO request)
     {
+        var user = new User();
         var passwordData = createPasswordHash(request.password);
         user.username = request.username;
         user.passwordHash = passwordData["passwordHash"];
         user.passwordSalt = passwordData["passwordSalt"];
-        return Ok(user);
+       await _context.Users.AddAsync(user);
+       await _context.SaveChangesAsync();
+       return Ok(user);
     }
 
     [HttpPost]
     [Route("/login")]
     public ActionResult login(UserDTO request)
     {
-        if (user.username != request.username) return BadRequest();
+        var user = _context.Users.FirstOrDefault(u => u.username == request.username);
+
+        if (user == null) return BadRequest("User doesn't exist");
+        
+       // if (user.username != request.username) return BadRequest();
 
         if (!verifyPasswordHash(request.password, user.passwordHash, user.passwordSalt))
         {
             return BadRequest("Wrong password");
         }
-
+        
         var token = createToken(user);
-
+        
         return Ok(token);
     }
 
@@ -54,6 +74,7 @@ public class AuthController : ControllerBase
     {
         List<Claim> claims = new List<Claim>()
         {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.username)
         };
 
